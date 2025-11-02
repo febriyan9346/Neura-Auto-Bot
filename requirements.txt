@@ -1,0 +1,6 @@
+web3==6.11.3
+httpx==0.25.2
+python-dotenv==1.0.0
+colorama==0.4.6
+pytz==2023.3
+eth-abi==4.2.1
