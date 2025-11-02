@@ -34,9 +34,11 @@ ABIS = {
 MAX_UINT256 = 2**256 - 1
 
 def get_wib_time():
+    """Mendapatkan string waktu WIB saat ini."""
     return datetime.now(WIB).strftime('%Y-%m-%d %H:%M:%S WIB')
 
 def logger(level, msg):
+    """Fungsi logging kustom dengan warna dan timestamp."""
     now = get_wib_time()
     if level == 'info':
         print(f"{Fore.WHITE}[{now}][➤] {msg}{Style.RESET_ALL}")
@@ -52,6 +54,7 @@ def logger(level, msg):
         print(f"\n{Fore.CYAN}{Style.BRIGHT}[{now}][➤] {msg}{Style.RESET_ALL}")
 
 def banner():
+    """Menampilkan banner script."""
     print(f"{Fore.CYAN}{Style.BRIGHT}")
     print("---------------------------------------------")
     print("                Neura Bot                ")
@@ -59,6 +62,7 @@ def banner():
     print(Style.RESET_ALL)
 
 async def fetch_available_tokens():
+    """Mengambil token yang tersedia dari subgraph (versi async)."""
     logger('info', 'Mengambil token swap yang tersedia...')
     try:
         endpoint = "https://api.goldsky.com/api/public/project_cmc8t6vh6mqlg01w19r2g15a7/subgraphs/analytics/1.0.1/gn"
@@ -95,12 +99,13 @@ async def fetch_available_tokens():
 
 class SwapBot:
     def __init__(self, private_key):
+        # Instance Async untuk mengirim transaksi
         self.w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(NEURA_RPC))
         self.account = self.w3.eth.account.from_key(private_key)
         self.address = self.account.address
-        self.router_contract = self.w3.eth.contract(address=CONTRACTS['SWAP_ROUTER'], abi=ABIS['SWAP_ROUTER'])
 
     def _encode_inner_swap(self, token_in, token_out, deadline_ms, amount_in_wei):
+        """Helper untuk encode data swap internal (porting dari JS)."""
         types = ['address', 'address', 'uint256', 'address', 'uint256', 'uint256', 'uint256', 'uint256']
         values = [
             Web3.to_checksum_address(token_in),
@@ -115,16 +120,18 @@ class SwapBot:
         encoded_params = abi_encode(types, values)
         return '0x1679c792' + encoded_params.hex()
 
-    async def _encode_router_multicall(self, calls):
-        tx_data = await self.router_contract.functions.multicall(calls).build_transaction({
-            'from': self.address,
-            'nonce': 0,
-            'gas': 0,
-            'gasPrice': 0
-        })
-        return tx_data['data']
+    def _encode_router_multicall(self, calls):
+        """Helper untuk encode data multicall router - FIXED VERSION."""
+        # Function selector untuk multicall(bytes[])
+        function_selector = '0xac9650d8'
+        
+        # Encode parameter menggunakan abi_encode
+        encoded_params = abi_encode(['bytes[]'], [calls])
+        
+        return function_selector + encoded_params.hex()
     
     async def get_swap_back_amount(self, token_b):
+        """Mendapatkan jumlah tokenB untuk di-swap kembali (seluruh balance)."""
         if token_b['symbol'] == 'ANKR':
             balance_wei = await self.w3.eth.get_balance(self.address)
             gas_reserve = Web3.to_wei('0.005', 'ether')
@@ -139,6 +146,7 @@ class SwapBot:
         return None
 
     async def perform_swap(self, token_in, token_out, amount_in_str):
+        """Melakukan satu operasi swap."""
         try:
             amount_in_decimal = Decimal(amount_in_str)
             if amount_in_decimal <= 0:
@@ -195,7 +203,7 @@ class SwapBot:
             
             inner_bytes = Web3.to_bytes(hexstr=inner)
             
-            data = await self._encode_router_multicall([inner_bytes])
+            data = self._encode_router_multicall([inner_bytes])
             tx_value = amount_in_wei if is_native_swap_in else 0
 
             logger('info', 'Mengirim transaksi swap...')
@@ -211,7 +219,7 @@ class SwapBot:
             }
 
             signed_swap_tx = self.w3.eth.account.sign_transaction(swap_tx, self.account.key)
-            swap_tx_hash = await self.w3.eth.send_raw_transaction(signed_swap_tx.raw_transaction)
+            swap_tx_hash = await self.w3.eth.send_raw_transaction(signed_swap_tx.rawTransaction)
             
             logger('loading', f'Tx swap terkirim. Hash: {swap_tx_hash.hex()}')
             
@@ -228,6 +236,7 @@ class SwapBot:
             raise e
 
     async def perform_swap_with_retries(self, token_in, token_out, amount_in_str, max_retries=3):
+        """Mencoba swap dengan logika retry."""
         for i in range(max_retries):
             try:
                 await self.perform_swap(token_in, token_out, amount_in_str)
@@ -247,6 +256,7 @@ class SwapBot:
         return False
 
 async def main_task():
+    """Fungsi yang berisi logika utama script (untuk dijalankan dalam loop)."""
     banner()
 
     pks = [v for k, v in os.environ.items() if k.startswith('PRIVATE_KEY_') and v]
@@ -326,6 +336,7 @@ async def main_task():
     logger('success', 'Semua tugas swap untuk putaran ini selesai.')
 
 async def run_loop_24h():
+    """Menjalankan main_task dalam loop 24 jam."""
     while True:
         try:
             logger('info', 'Memulai putaran siklus baru...')
