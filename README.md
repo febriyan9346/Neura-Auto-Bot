@@ -2,6 +2,10 @@
 
 Bot otomatis untuk melakukan swap token pada Neura Protocol Testnet secara berkala.
 
+## 📸 Bot in Action
+
+![image](https://github.com/user-attachments/assets/29cf2c79-3b48-461f-b29e-410589b2570f)
+
 ## Fitur
 
 - ✅ Multi-wallet support
